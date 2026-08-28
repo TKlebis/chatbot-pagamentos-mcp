@@ -28,7 +28,7 @@ function App() {
       setToken(data.access_token);
       localStorage.setItem('token', data.access_token);
     } catch (error) {
-      alert('Login falhou. Tente user_normal com senha 123456');
+      alert('Login falhou. Tente cliente_normal com senha 123456');
     }
   };
 

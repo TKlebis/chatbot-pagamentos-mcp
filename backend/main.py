@@ -25,12 +25,13 @@ load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError(
-        "SECRET_KEY não configurada. Crie um arquivo .env baseado no .env.example."
+        "SECRET_KEY não configurada ou vazia. Preencha SECRET_KEY no arquivo .env."
     )
 if len(SECRET_KEY.encode("utf-8")) < 32:
     raise RuntimeError("SECRET_KEY precisa ter pelo menos 32 bytes.")
 
 ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_HOURS = 2
 DB_PATH = "data/app.db"
 
 app = FastAPI(title="ChatPay Backend API")
@@ -104,7 +105,7 @@ def login(req: LoginRequest):
     if not user or not password_hash.verify(req.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
-    expire = datetime.now(timezone.utc) + timedelta(hours=2)
+    expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     token = jwt.encode({"sub": user["id"], "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
 
     return {"access_token": token, "token_type": "bearer", "user_id": user["id"]}
