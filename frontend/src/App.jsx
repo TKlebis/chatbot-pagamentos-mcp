@@ -80,8 +80,8 @@ function App() {
         </form>
         <p style={{fontSize: '14px', color: '#666'}}>
           <b>Usuários de teste:</b><br/>
-          <code>user_normal</code> (Limite alto)<br/>
-          <code>user_baixo</code> (Limite baixo)<br/>
+          <code>cliente_normal</code> (Limite alto)<br/>
+          <code>cliente_baixo</code> (Limite baixo)<br/>
           Senha para ambos: <code>123456</code>
         </p>
       </div>
