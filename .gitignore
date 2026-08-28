@@ -5,3 +5,6 @@ __pycache__/
 .idea/
 dist/
 .env
+.env.*
+!.env.example
+context.md

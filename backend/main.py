@@ -9,6 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import jwt
+from dotenv import load_dotenv
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
 
@@ -17,10 +18,18 @@ from mcp import StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.session import ClientSession
 
-# ==========================================
+
 # CONFIGURAÇÕES
-# ==========================================
-SECRET_KEY = "chave-super-secreta-desafio"
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY não configurada. Crie um arquivo .env baseado no .env.example."
+    )
+if len(SECRET_KEY.encode("utf-8")) < 32:
+    raise RuntimeError("SECRET_KEY precisa ter pelo menos 32 bytes.")
+
 ALGORITHM = "HS256"
 DB_PATH = "data/app.db"
 
@@ -38,9 +47,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==========================================
+
 # MODELOS DE DADOS
-# ==========================================
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -48,9 +56,8 @@ class LoginRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
 
-# ==========================================
+
 # FUNÇÕES AUXILIARES
-# ==========================================
 def get_db():
     # TIMEOUT ADICIONADO PARA EVITAR "DATABASE IS LOCKED"
     conn = sqlite3.connect(DB_PATH, timeout=20.0)
@@ -60,14 +67,34 @@ def get_db():
 # Middleware de Autenticação JWT
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload.get("sub")
-    except Exception:
-        raise HTTPException(status_code=401, detail="Token inválido ou expirado")
+        payload = jwt.decode(
+            credentials.credentials,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={"require": ["sub", "exp"]},
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expirado")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token inválido")
 
-# ==========================================
+    user_id = payload.get("sub")
+    if not isinstance(user_id, str) or not user_id:
+        raise HTTPException(status_code=401, detail="Identidade do token inválida")
+
+    conn = get_db()
+    try:
+        user = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+    finally:
+        conn.close()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuário não encontrado")
+
+    return user_id
+
+
 # ROTAS DA API
-# ==========================================
 @app.post("/login")
 def login(req: LoginRequest):
     conn = get_db()
@@ -160,7 +187,7 @@ async def chat(req: ChatRequest, user_id: str = Depends(verify_token)):
 
             while True:
                 response = await ollama.chat(
-                    model="qwen3",
+                    model="qwen3:1.7b",
                     messages=messages_for_llm,
                     tools=ollama_tools
                 )

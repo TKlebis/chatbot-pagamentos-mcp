@@ -65,7 +65,15 @@ python -m venv .venv
 .venv\Scripts\activate
 
 # Instalar dependências da API e do MCP
-pip install fastapi uvicorn pydantic pyjwt pwdlib argon2-cffi ollama mcp
+pip install fastapi uvicorn pydantic pyjwt pwdlib argon2-cffi ollama mcp python-dotenv
+
+# Criar a configuração local a partir do exemplo (Linux/macOS)
+cp .env.example .env
+
+# No Windows PowerShell, use: Copy-Item .env.example .env
+
+# Gere uma chave aleatória com pelo menos 32 bytes e coloque-a em SECRET_KEY no arquivo .env
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 # Executar o seed para criar e popular o banco de dados do zero
 python seed.py
@@ -100,6 +108,22 @@ Para testar os cenários de limite excedido e sucesso, utilize as credenciais pa
 * Username: user_baixo
 
 * Senha: 123456
+
+## 5. Caso dê erro de conexão com o MCP
+
+Para verificar quais modelos do Ollama estão instalados na sua máquina, execute:
+
+```shell
+ollama list
+```
+
+O back-end está configurado para utilizar o modelo `qwen3`. Caso você tenha uma versão diferente instalada, altere a configuração do back-end para utilizar exatamente o modelo disponível na sua máquina.
+
+No meu caso, por exemplo:
+
+```text
+qwen3:1.7b
+```
 
 # 📸 Evidências dos Testes (Prints)
 
