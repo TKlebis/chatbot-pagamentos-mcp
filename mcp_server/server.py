@@ -94,13 +94,6 @@ def registrar_intencao(produto_id: str, quantidade: int) -> dict:
             (intencao_id, USER_ID, CHAT_ID, produto_id, quantidade, valor, produto["moeda"], "pendente", expira.isoformat(), agora.isoformat())
         )
 
-        conn.execute(
-            """
-            INSERT INTO tool_results (user_id, chat_id, tool_name, intencao_id, result_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (USER_ID, CHAT_ID, 'registrar_intencao', intencao_id, '{"status": "pendente"}', agora.isoformat())
-        )
         conn.commit()
 
         return {

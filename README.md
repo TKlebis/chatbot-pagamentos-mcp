@@ -182,6 +182,14 @@ https://github.com/user-attachments/assets/6ae4dccd-7843-4b20-8695-16d0b76b920c
 
 * Prevenção de Fraudes: O preço real do produto nunca é enviado pelo modelo de IA; ele é buscado diretamente no banco de dados com base no produto_id.
 
+* Auditoria MCP: Cada chamada de tool é registrada na tabela `tool_results`, incluindo usuário, sessão, argumentos, resultado, valor da operação e horário. Isso também registra chamadas recusadas, como tentativas de ultrapassar o limite ou usar uma intenção inválida.
+
+Para consultar os registros localmente depois de usar o chat:
+
+```shell
+sqlite3 data/app.db "SELECT id, user_id, chat_id, tool_name, intencao_id, result_json, created_at FROM tool_results ORDER BY id DESC;"
+```
+
 ## 🚀 Squad 9
 
 *Autor:* [Thiago Klebis](https://www.linkedin.com/in/thiagoklebis/)

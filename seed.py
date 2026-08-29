@@ -67,7 +67,7 @@ def seed():
         created_at TEXT NOT NULL
     )''')
 
-    # 6. Tabela de Resultados de Tools (para auditoria do MCP)
+    # 6. Tabela de resultados das tools (auditoria de todas as chamadas MCP)
     c.execute('''CREATE TABLE tool_results (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT NOT NULL,

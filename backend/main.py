@@ -65,6 +65,57 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+
+def registrar_auditoria(conn, user_id, chat_id, tool_name, argumentos, resultado_texto):
+    """Registra todas as chamadas MCP feitas pelo backend."""
+    try:
+        resultado = json.loads(resultado_texto)
+    except json.JSONDecodeError:
+        resultado = {"texto": resultado_texto}
+
+    intencao_id = None
+    if isinstance(argumentos, dict):
+        intencao_id = argumentos.get("intencao_id")
+    if not intencao_id and isinstance(resultado, dict):
+        intencao_id = resultado.get("intencao_id")
+
+    valor_centavos = None
+    if isinstance(resultado, dict):
+        valor = resultado.get("valor_total", resultado.get("valor"))
+        if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+            valor_centavos = round(valor * 100)
+
+    # Em recusas como limite excedido, o valor pode não voltar no resultado.
+    if valor_centavos is None and intencao_id:
+        intencao = conn.execute(
+            "SELECT valor_total_centavos FROM intencoes WHERE id = ?",
+            (intencao_id,)
+        ).fetchone()
+        if intencao:
+            valor_centavos = intencao["valor_total_centavos"]
+
+    auditoria = {
+        "argumentos": argumentos,
+        "resultado": resultado,
+        "valor_centavos": valor_centavos,
+    }
+
+    conn.execute(
+        """
+        INSERT INTO tool_results
+        (user_id, chat_id, tool_name, intencao_id, result_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            user_id,
+            chat_id,
+            tool_name,
+            intencao_id,
+            json.dumps(auditoria, ensure_ascii=False),
+            datetime.now(timezone.utc).isoformat(),
+        )
+    )
+
 # Middleware de Autenticação JWT
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
     try:
@@ -218,8 +269,25 @@ async def chat(req: ChatRequest, user_id: str = Depends(verify_token)):
                     t_name = tool_call.function.name
                     t_args = tool_call.function.arguments
 
-                    mcp_result = await mcp_client.call_tool(t_name, t_args)
-                    result_text = "".join([item.text for item in mcp_result.content if item.type == "text"])
+                    try:
+                        mcp_result = await mcp_client.call_tool(t_name, t_args)
+                        result_text = "".join([item.text for item in mcp_result.content if item.type == "text"])
+                    except Exception:
+                        # A falha também é registrada para não perder a trilha de auditoria.
+                        result_text = json.dumps({
+                            "status": "recusado",
+                            "erro": "ERRO_MCP",
+                            "mensagem": "Não foi possível executar a ferramenta.",
+                        }, ensure_ascii=False)
+
+                    registrar_auditoria(
+                        conn,
+                        user_id,
+                        chat_id,
+                        t_name,
+                        t_args,
+                        result_text,
+                    )
 
                     tool_msg = {
                         "role": "tool",
