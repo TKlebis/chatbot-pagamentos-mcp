@@ -197,4 +197,5 @@ O campo `resultado` contém o status da operação, o valor, os argumentos e eve
 ## 🚀 Squad 9
 
 *Autor:* [Thiago Klebis](https://www.linkedin.com/in/thiagoklebis/)
-[Luiz Meneses](https://www.linkedin.com/in/menesesluizf/)
+
+*Autor:* [Luiz Meneses](https://www.linkedin.com/in/menesesluizf/)
