@@ -1,6 +1,8 @@
 import os
 import json
+import re
 import sqlite3
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -59,6 +61,70 @@ class ChatRequest(BaseModel):
 
 
 # FUNÇÕES AUXILIARES
+SYSTEM_PROMPT = """
+Você é o assistente do ChatPay.
+
+Regras obrigatórias:
+- Use as ferramentas MCP para consultar o catálogo e executar operações de compra.
+- Nunca invente produtos, valores, intenções, transações ou limites.
+- Nunca assuma o método de pagamento com base no histórico. Aguarde o usuário confirmar
+  explicitamente Pix ou cartão na mensagem atual.
+- Depois de registrar uma intenção, pergunte qual método de pagamento o usuário deseja.
+- Só diga que uma compra foi aprovada quando realizar_compra retornar status "aprovado".
+- Se uma ferramenta retornar uma recusa, explique a recusa e não diga que a compra foi concluída.
+""".strip()
+
+
+def normalizar_texto(texto: str) -> str:
+    texto_sem_acento = unicodedata.normalize("NFKD", texto.lower())
+    return "".join(
+        caractere for caractere in texto_sem_acento
+        if not unicodedata.combining(caractere)
+    )
+
+
+def detectar_metodo_confirmado(mensagem: str) -> str | None:
+    """Retorna um método somente quando há uma única confirmação explícita."""
+    texto = normalizar_texto(mensagem)
+    metodos = []
+
+    if re.search(r"\bpix\b", texto):
+        metodos.append("pix")
+    if re.search(r"\bcartao\b", texto):
+        metodos.append("cartao")
+
+    return metodos[0] if len(metodos) == 1 else None
+
+
+def resposta_afirma_aprovacao(texto: str) -> bool:
+    """Detecta uma aprovação textual sem tratá-la como prova de pagamento."""
+    texto_normalizado = normalizar_texto(texto)
+    negacoes = (
+        "nao foi",
+        "nao e possivel",
+        "nao aprovada",
+        "nao aprovado",
+        "recusad",
+        "falha",
+        "erro",
+    )
+    if any(negacao in texto_normalizado for negacao in negacoes):
+        return False
+
+    frases_de_aprovacao = (
+        "compra realizada",
+        "compra aprovada",
+        "pagamento realizado",
+        "pagamento aprovado",
+        "transacao aprovada",
+        "venda realizada",
+        "purchase completed",
+        "purchase approved",
+        "payment successful",
+    )
+    return any(frase in texto_normalizado for frase in frases_de_aprovacao)
+
+
 def get_db():
     # TIMEOUT ADICIONADO PARA EVITAR "DATABASE IS LOCKED"
     conn = sqlite3.connect(DB_PATH, timeout=20.0)
@@ -182,6 +248,10 @@ def get_history(user_id: str = Depends(verify_token)):
 async def chat(req: ChatRequest, user_id: str = Depends(verify_token)):
     conn = get_db()
     agora = datetime.now(timezone.utc).isoformat()
+    metodo_confirmado = detectar_metodo_confirmado(req.message)
+    compra_aprovada_nesta_requisicao = False
+    intencao_criada_nesta_requisicao = False
+    resposta_final = ""
 
     chat = conn.execute("SELECT id FROM chats WHERE user_id = ? ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
     if not chat:
@@ -202,7 +272,7 @@ async def chat(req: ChatRequest, user_id: str = Depends(verify_token)):
         (chat_id,)
     ).fetchall()
 
-    messages_for_llm = []
+    messages_for_llm = [{"role": "system", "content": SYSTEM_PROMPT}]
     for row in historico_db:
         msg = {"role": row["role"]}
         if row["content"]: msg["content"] = row["content"]
@@ -248,9 +318,23 @@ async def chat(req: ChatRequest, user_id: str = Depends(verify_token)):
                 messages_for_llm.append(assist_msg)
 
                 if not assist_msg.get("tool_calls"):
+                    resposta = assist_msg.get("content", "")
+                    if resposta_afirma_aprovacao(resposta) and not compra_aprovada_nesta_requisicao:
+                        if intencao_criada_nesta_requisicao:
+                            resposta = (
+                                "A intenção de compra foi registrada, mas a compra ainda não foi aprovada. "
+                                "Confirme explicitamente se deseja pagar com Pix ou cartão."
+                            )
+                        else:
+                            resposta = (
+                                "Não foi possível confirmar uma compra aprovada pelo backend. "
+                                "Nenhuma transação foi concluída."
+                            )
+                    resposta_final = resposta
+
                     conn.execute(
                         "INSERT INTO messages (chat_id, user_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
-                        (chat_id, user_id, "assistant", assist_msg.get("content", ""), datetime.now(timezone.utc).isoformat())
+                        (chat_id, user_id, "assistant", resposta, datetime.now(timezone.utc).isoformat())
                     )
                     conn.commit()
                     break
@@ -269,16 +353,59 @@ async def chat(req: ChatRequest, user_id: str = Depends(verify_token)):
                     t_name = tool_call.function.name
                     t_args = tool_call.function.arguments
 
+                    if t_name == "realizar_compra":
+                        metodo_da_tool = t_args.get("metodo_pagamento") if isinstance(t_args, dict) else None
+
+                        if not metodo_confirmado:
+                            result_text = json.dumps({
+                                "status": "recusado",
+                                "erro": "CONFIRMACAO_PAGAMENTO_NECESSARIA",
+                                "mensagem": "A mensagem atual precisa confirmar Pix ou cartão antes da compra.",
+                            }, ensure_ascii=False)
+                        elif metodo_da_tool != metodo_confirmado:
+                            result_text = json.dumps({
+                                "status": "recusado",
+                                "erro": "METODO_NAO_CONFIRMADO",
+                                "mensagem": "O método enviado pela ferramenta não corresponde ao método confirmado pelo usuário.",
+                            }, ensure_ascii=False)
+                        else:
+                            try:
+                                mcp_result = await mcp_client.call_tool(t_name, t_args)
+                                result_text = "".join([item.text for item in mcp_result.content if item.type == "text"])
+                            except Exception:
+                                # A falha também é registrada para não perder a trilha de auditoria.
+                                result_text = json.dumps({
+                                    "status": "recusado",
+                                    "erro": "ERRO_MCP",
+                                    "mensagem": "Não foi possível executar a ferramenta.",
+                                }, ensure_ascii=False)
+                    else:
+                        try:
+                            mcp_result = await mcp_client.call_tool(t_name, t_args)
+                            result_text = "".join([item.text for item in mcp_result.content if item.type == "text"])
+                        except Exception:
+                            # A falha também é registrada para não perder a trilha de auditoria.
+                            result_text = json.dumps({
+                                "status": "recusado",
+                                "erro": "ERRO_MCP",
+                                "mensagem": "Não foi possível executar a ferramenta.",
+                            }, ensure_ascii=False)
+
                     try:
-                        mcp_result = await mcp_client.call_tool(t_name, t_args)
-                        result_text = "".join([item.text for item in mcp_result.content if item.type == "text"])
-                    except Exception:
-                        # A falha também é registrada para não perder a trilha de auditoria.
-                        result_text = json.dumps({
-                            "status": "recusado",
-                            "erro": "ERRO_MCP",
-                            "mensagem": "Não foi possível executar a ferramenta.",
-                        }, ensure_ascii=False)
+                        resultado = json.loads(result_text)
+                    except json.JSONDecodeError:
+                        resultado = {}
+
+                    if t_name == "registrar_intencao" and isinstance(resultado, dict):
+                        intencao_criada_nesta_requisicao = intencao_criada_nesta_requisicao or (
+                            resultado.get("status") == "pendente"
+                            and bool(resultado.get("intencao_id"))
+                        )
+
+                    if t_name == "realizar_compra" and isinstance(resultado, dict):
+                        compra_aprovada_nesta_requisicao = compra_aprovada_nesta_requisicao or (
+                            resultado.get("status") == "aprovado"
+                        )
 
                     registrar_auditoria(
                         conn,
@@ -303,7 +430,7 @@ async def chat(req: ChatRequest, user_id: str = Depends(verify_token)):
                 conn.commit()
 
     conn.close()
-    return {"response": assist_msg.get("content", "")}
+    return {"response": resposta_final}
 
 if __name__ == "__main__":
     import uvicorn

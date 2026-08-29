@@ -113,7 +113,7 @@ def registrar_intencao(produto_id: str, quantidade: int) -> dict:
 
 @mcp.tool()
 def realizar_compra(intencao_id: str, metodo_pagamento: Literal["cartao", "pix"]) -> dict:
-    """Realiza uma compra usando uma intenção previamente registrada."""
+    """Realiza uma compra usando uma intenção previamente registrada e confirmada."""
     try:
         conn = conectar()
         conn.execute("BEGIN IMMEDIATE")
