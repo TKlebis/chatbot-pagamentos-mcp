@@ -56,7 +56,37 @@ chatbot-pagamentos-mcp/
 
 * Servidor Ollama rodando localmente
 
-## 2. Configurar o Backend e o Banco de Dados
+## 2. Configurar o Ollama
+
+Instale o Ollama pelo [site oficial](https://ollama.com/download). Depois, abra um terminal e baixe o modelo utilizado pelo projeto:
+
+```shell
+ollama pull qwen3:1.7b
+```
+
+O backend usa exatamente o modelo `qwen3:1.7b`, configurado em `backend/main.py`.
+
+Verifique se o modelo foi instalado:
+
+```shell
+ollama list
+```
+
+O Ollama normalmente inicia o serviço automaticamente. Se ele não estiver rodando, inicie-o com:
+
+```shell
+ollama serve
+```
+
+Se aparecer uma mensagem informando que a porta já está em uso, o serviço provavelmente já está rodando; nesse caso, não é necessário iniciar outro processo.
+
+Opcionalmente, teste o modelo diretamente:
+
+```shell
+ollama run qwen3:1.7b
+```
+
+## 3. Configurar o Backend e o Banco de Dados
 No terminal, navegue até a raiz do projeto e configure o ambiente virtual:
 
 ```python
@@ -65,18 +95,28 @@ python -m venv .venv
 .venv\Scripts\activate
 
 # Instalar dependências da API e do MCP
-pip install fastapi uvicorn pydantic pyjwt pwdlib argon2-cffi ollama mcp
+pip install fastapi uvicorn pydantic pyjwt pwdlib argon2-cffi ollama mcp python-dotenv
+
+# Criar a configuração local a partir do exemplo (Linux/macOS)
+cp .env.example .env
+
+# No Windows PowerShell, use: Copy-Item .env.example .env
+
+# Gere uma chave aleatória com pelo menos 32 bytes
+python -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(32))"
+
+# Copie a linha exibida acima para o arquivo .env, substituindo SECRET_KEY=
 
 # Executar o seed para criar e popular o banco de dados do zero
 python seed.py
 ```
 
-## 3. Iniciar o Servidor Backend (FastAPI)
+## 4. Iniciar o Servidor Backend (FastAPI)
 
 ```python
 uvicorn backend.main:app --reload
 ```
-## 4. Iniciar o Frontend (React)
+## 5. Iniciar o Frontend (React)
 Abra um novo terminal na pasta do frontend:
 
 ```python
@@ -91,15 +131,31 @@ Para testar os cenários de limite excedido e sucesso, utilize as credenciais pa
 
 * Usuário Normal (Limite Alto - R$ 2.000,00):
 
-* Username: user_normal
+* Username: cliente_normal
 
 * Senha: 123456
 
 * Usuário com Limite Baixo (R$ 100,00):
 
-* Username: user_baixo
+* Username: cliente_baixo
 
 * Senha: 123456
+
+## 6. Caso dê erro de conexão com o Ollama/MCP
+
+Para verificar quais modelos do Ollama estão instalados na sua máquina, execute:
+
+```shell
+ollama list
+```
+
+O back-end está configurado para utilizar o modelo `qwen3:1.7b`. Caso você tenha outra versão instalada, altere a configuração do back-end para utilizar exatamente o nome exibido pelo comando `ollama list`.
+
+No meu caso, por exemplo:
+
+```text
+qwen3:1.7b
+```
 
 # 📸 Evidências dos Testes (Prints)
 
@@ -108,6 +164,9 @@ Para testar os cenários de limite excedido e sucesso, utilize as credenciais pa
 
 ## Cenário de Regra (Limite Excedido)
 <img width="597" height="692" alt="O Print de Limite Excedido" src="https://github.com/user-attachments/assets/a6072d49-a1f7-42fc-87b4-fbf69eee4fae" />
+
+## Cenário de Segurança (Pedidos Maliciosos)
+<img width="603" alt="O print de teste de pedidos maliciosos" src="./O%20print%20de%20teste%20de%20pedidos%20maliciosos.png" />
 
 ## Cenário de Amostra (Catalogo entregue)
 <img width="598" height="696" alt="O Print do CatálogoInterface" src="https://github.com/user-attachments/assets/e180d3ea-dbdc-4f2c-a41b-73284a320579" />
