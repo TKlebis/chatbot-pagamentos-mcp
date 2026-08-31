@@ -183,5 +183,65 @@ def realizar_compra(intencao_id: str, metodo_pagamento: Literal["cartao", "pix"]
         if 'conn' in locals():
             conn.close()
 
+@mcp.tool()
+def consultar_historico_compras(limite: int = 3) -> dict:
+    """Consulta o histórico de compras concluidas do usuário autenticado."""
+    try:
+        if limite is None:
+            limite = 3
+        limite = int(limite)
+    except (TypeError, ValueError):
+        return recusado("LIMITE_INVALIDO", "O limite informado não é um número válido.")
+
+    if limite <= 0:
+        limite = 3
+
+    limite = min(limite, 10)
+
+    try:
+        conn = conectar()
+        compras = conn.execute(
+            """
+            SELECT
+                transacoes.id,
+                transacoes.user_id,
+                transacoes.valor_centavos,
+                transacoes.metodo_pagamento,
+                transacoes.created_at,
+                intencoes.quantidade,
+                produtos.nome,
+                produtos.id AS produto_id,
+                intencoes.moeda
+            FROM transacoes
+            INNER JOIN intencoes ON intencoes.id = transacoes.intencao_id
+            INNER JOIN produtos ON produtos.id = intencoes.produto_id
+            WHERE transacoes.user_id = ?
+            ORDER BY datetime(transacoes.created_at) DESC
+            LIMIT ?
+            """,
+            (USER_ID, limite)
+        ).fetchall()
+
+        return {
+            "compras": [
+                {
+                    "id": c["id"],
+                    "produto": c["nome"],
+                    "produto_id": c["produto_id"],
+                    "quantidade": c["quantidade"],
+                    "valor": c["valor_centavos"] / 100,
+                    "moeda": c["moeda"],
+                    "metodo_pagamento": c["metodo_pagamento"],
+                    "data": c["created_at"],
+                }
+                for c in compras
+            ]
+        }
+    except Exception as e:
+        return recusado("ERRO_HISTORICO_COMPRAS", f"Falha no servidor ao consultar histórico: {str(e)}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 if __name__ == "__main__":
     mcp.run()
