@@ -27,6 +27,7 @@ O servidor MCP (`mcp_server/server.py`) expõe **3 ferramentas principais** que 
 1. **`listar_catalogo`**: Consulta os produtos ativos e com estoque disponível no banco de dados.
 2. **`registrar_intencao`**: Cria um carrinho temporário (expira em 10 minutos) validando estoque, quantidade e regras de negócio sem movimentar saldo financeiro.
 3. **`realizar_compra`**: Valida a intenção gerada na sessão, checa o limite de saldo disponível do usuário, processa o pagamento (Pix ou Cartão) de forma atômica e atualiza o estoque.
+4. **`consultar_historico_compras`**: Permite que o usuário consulte as informações das últimas compras realizadas em sua conta. A consulta respeita o isolamento de sessão, garantindo que cada usuário tenha acesso somente ao seu próprio histórico de compras.
 
 ---
 
@@ -157,19 +158,37 @@ No meu caso, por exemplo:
 qwen3:1.7b
 ```
 
+---
+
+# 🛒 Consulta do Histórico de Compras
+
+O ChatPay também permite que o usuário consulte o histórico das compras realizadas anteriormente.
+
+Por meio da ferramenta MCP `consultar_historico_compras`, o sistema recupera as informações das últimas transações associadas ao usuário autenticado, permitindo acompanhar suas compras diretamente pelo chat.
+
+A funcionalidade mantém o **isolamento dos dados entre usuários**, garantindo que um usuário não consiga consultar o histórico de compras de outra conta.
+
+Essa funcionalidade complementa o fluxo de pagamentos ao permitir não apenas realizar novas compras, mas também consultar as transações já realizadas.
+
+---
+
+
 # 📸 Evidências dos Testes (Prints)
 
 ## Cenário de Sucesso (Compra Aprovada)
-<img width="597" height="697" alt="O Print de Sucesso da Compra" src="https://github.com/user-attachments/assets/2584b635-2dd8-4f1b-8b07-2c49d4f93069" />
+<img width="603"  alt="O Print de Sucesso da Compra" src="./venda-sucesso.png" />
 
 ## Cenário de Regra (Limite Excedido)
-<img width="597" height="692" alt="O Print de Limite Excedido" src="https://github.com/user-attachments/assets/a6072d49-a1f7-42fc-87b4-fbf69eee4fae" />
+<img width="603"  alt="O Print de Limite Excedido" src="./limite-nao-aprovado.png" />
 
 ## Cenário de Segurança (Pedidos Maliciosos)
-<img width="603" alt="O print de teste de pedidos maliciosos" src="./O%20print%20de%20teste%20de%20pedidos%20maliciosos.png" />
+<img width="603" alt="O print de teste de pedidos maliciosos" src="./intencao-maligna.png" />
 
 ## Cenário de Amostra (Catalogo entregue)
-<img width="598" height="696" alt="O Print do CatálogoInterface" src="https://github.com/user-attachments/assets/e180d3ea-dbdc-4f2c-a41b-73284a320579" />
+<img width="603"  alt="O Print do CatálogoInterface" src="./catalogo.png" />
+
+## Histórico de Compras (Extra)
+<img width="603"  alt="O Print do Histórico de Compras" src="./historico-de-compras.png" />
 
 ## Sistema de Chat 
 https://github.com/user-attachments/assets/6ae4dccd-7843-4b20-8695-16d0b76b920c
@@ -199,3 +218,5 @@ O campo `resultado` contém o status da operação, o valor, os argumentos e eve
 *Autor:* [Thiago Klebis](https://www.linkedin.com/in/thiagoklebis/)
 
 *Autor:* [Luiz Meneses](https://www.linkedin.com/in/menesesluizf/)
+
+*Autor:* [Carlos Eduardo Darmada](https://www.linkedin.com/in/cadudarmada/)
